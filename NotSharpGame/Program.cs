@@ -61,12 +61,14 @@ public static class NotSharpGame
     public class Mesh : IDisposable
     {
         public List<Vector3> Vertices = new List<Vector3>();
-
-        public readonly uint Vbo, Vao;
+        public List<uint> Indices = new List<uint>();
+        
+        public readonly uint Vbo, Ebo, Vao;
 
         public Mesh()
         {
             Vbo = _gl.CreateBuffer();
+            Ebo = _gl.CreateBuffer();
             Vao = _gl.CreateVertexArray();
         }
 
@@ -76,6 +78,12 @@ public static class NotSharpGame
             
             _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
             _gl.BufferData<Vector3>(BufferTargetARB.ArrayBuffer, Vertices.ToArray(), BufferUsageARB.StaticDraw);
+
+            if (Vertices.Count != 0)
+            {
+                _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, Ebo);
+                _gl.BufferData<uint>(BufferTargetARB.ElementArrayBuffer, Indices.ToArray(), BufferUsageARB.StaticDraw);
+            }
             
             _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), (void*)0);
             _gl.EnableVertexAttribArray(0);
@@ -83,13 +91,21 @@ public static class NotSharpGame
             _gl.BindVertexArray(0);
             
             _gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
+            _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, 0);
         }
 
-        public void Draw(PrimitiveType type)
+        public unsafe void Draw(PrimitiveType type)
         {
             _gl.BindVertexArray(Vao);
 
-            _gl.DrawArrays(type, 0, (uint)Vertices.Count);
+            if (Indices.Count != 0)
+            {
+                _gl.DrawElements(type, (uint)Indices.Count, DrawElementsType.UnsignedInt, (void*)0);
+            }
+            else
+            {
+                _gl.DrawArrays(type, 0, (uint)Vertices.Count);
+            }
             
             _gl.BindVertexArray(0);
         }
@@ -161,9 +177,15 @@ public static class NotSharpGame
         _mesh = new Mesh();
         _mesh.Vertices = new List<Vector3>
         {
-            new Vector3(-0.5f, -0.5f, 0.0f),
+            new Vector3(0.5f, 0.5f, 0.0f),
             new Vector3(0.5f, -0.5f, 0.0f),
-            new Vector3(0.0f, 0.5f, 0.0f)
+            new Vector3(-0.5f, -0.5f, 0.0f),
+            new Vector3(-0.5f, 0.5f, 0.0f)
+        };
+        _mesh.Indices = new List<uint>
+        {
+            0, 1, 3,
+            1, 2, 3
         };
         _mesh.UpdateBuffers();
         
