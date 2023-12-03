@@ -178,7 +178,7 @@ public static class NotSharpGame
 
         public byte A;
 
-        public Color(byte r, byte g, byte b, byte a)
+        public Color(byte r, byte g, byte b, byte a = 255)
         {
             R = r;
             G = g;
@@ -186,7 +186,7 @@ public static class NotSharpGame
             A = a;
         }
 
-        public Color(int r, int g, int b, int a)
+        public Color(int r, int g, int b, int a = 255)
         {
             R = Convert.ToByte(r);
             G = Convert.ToByte(g);
@@ -194,7 +194,7 @@ public static class NotSharpGame
             A = Convert.ToByte(a);
         }
 
-        public Color(float r, float g, float b, float a)
+        public Color(float r, float g, float b, float a = 1.0f)
         {
             R = Convert.ToByte(r * 255);
             G = Convert.ToByte(g * 255);
@@ -291,10 +291,10 @@ public static class NotSharpGame
         };
         _mesh.Colors = new Color[]
         {
-            new Color(255, 0, 0, 255),
-            new Color(0, 255, 0, 255),
-            new Color(0, 0, 255, 255),
-            new Color(255, 255, 0, 255)
+            new Color(255, 0, 0),
+            new Color(0, 255, 0),
+            new Color(0, 0, 255),
+            new Color(255, 255, 0)
         };
         _mesh.FetchAttributesFromShader(_shader);
         _mesh.UpdateBuffers();
