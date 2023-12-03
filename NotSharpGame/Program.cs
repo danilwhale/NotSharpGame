@@ -60,16 +60,48 @@ public static class NotSharpGame
 
     public class Mesh : IDisposable
     {
+        public const string VertexAttribute = "aVertex";
+        public const string ColorAttribute = "aColor";
+        
         public Vector3[] Vertices;
         public uint[] Indices;
+        public Color[] Colors;
         
-        public readonly uint Vbo, Ebo, Vao;
+        public readonly uint Ebo, Vao;
+        
+        /*
+         * Vbo - vertices buffer
+         * Cbo - colors buffer
+         */
+        public readonly uint Vbo, Cbo;
+
+        private int _vertexAttrib = -1;
+        private int _colorAttrib = -1;
 
         public Mesh()
         {
-            Vbo = _gl.CreateBuffer();
             Ebo = _gl.CreateBuffer();
             Vao = _gl.CreateVertexArray();
+            
+            Vbo = _gl.CreateBuffer();
+            Cbo = _gl.CreateBuffer();
+        }
+
+        public void FetchAttributesFromShader(Shader shader)
+        {
+            _vertexAttrib = _gl.GetAttribLocation(shader.Id, VertexAttribute);
+            ThrowIfInvalidAttrib(_vertexAttrib, "vertex");
+            
+            _colorAttrib = _gl.GetAttribLocation(shader.Id, ColorAttribute);
+            ThrowIfInvalidAttrib(_colorAttrib, "color");
+        }
+
+        private void ThrowIfInvalidAttrib(int attrib, string name)
+        {
+            if (attrib < 0)
+            {
+                throw new IndexOutOfRangeException("attribute " + name + " doesnt exist");
+            }
         }
 
         public unsafe void UpdateBuffers()
@@ -78,20 +110,31 @@ public static class NotSharpGame
             {
                 throw new NullReferenceException("one of your buffers is null you bozo");
             }
+
+            if (_vertexAttrib < 0 || _colorAttrib < 0)
+            {
+                throw new IndexOutOfRangeException("attributes arent fetched");
+            }
             
             _gl.BindVertexArray(Vao);
             
             _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
             _gl.BufferData<Vector3>(BufferTargetARB.ArrayBuffer, Vertices, BufferUsageARB.StaticDraw);
 
+            _gl.VertexAttribPointer((uint)_vertexAttrib, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray((uint)_vertexAttrib);
+            
+            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Cbo);
+            _gl.BufferData<Color>(BufferTargetARB.ArrayBuffer, Colors, BufferUsageARB.StaticDraw);
+            
+            _gl.VertexAttribPointer((uint)_colorAttrib, 4, VertexAttribPointerType.UnsignedByte, true, 4 * sizeof(byte), (void*)0);
+            _gl.EnableVertexAttribArray((uint)_colorAttrib);
+            
             if (Vertices.Length != 0)
             {
                 _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, Ebo);
                 _gl.BufferData<uint>(BufferTargetARB.ElementArrayBuffer, Indices, BufferUsageARB.StaticDraw);
             }
-            
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
 
             _gl.BindVertexArray(0);
             
@@ -119,6 +162,51 @@ public static class NotSharpGame
         {
             _gl.DeleteBuffer(Vbo);
             _gl.DeleteVertexArray(Vao);
+        }
+    }
+
+    public struct Color
+    {
+        public byte R;
+
+        public byte G;
+
+        public byte B;
+
+        public byte A;
+
+        public Color(byte r, byte g, byte b, byte a)
+        {
+            R = r;
+            G = g;
+            B = b;
+            A = a;
+        }
+
+        public Color(int r, int g, int b, int a)
+        {
+            R = Convert.ToByte(r);
+            G = Convert.ToByte(g);
+            B = Convert.ToByte(b);
+            A = Convert.ToByte(a);
+        }
+
+        public Color(float r, float g, float b, float a)
+        {
+            R = Convert.ToByte(r * 255);
+            G = Convert.ToByte(g * 255);
+            B = Convert.ToByte(b * 255);
+            A = Convert.ToByte(a * 255);
+        }
+
+        public static implicit operator Color(System.Drawing.Color color)
+        {
+            return new Color(color.R, color.G, color.B, color.A);
+        }
+
+        public static implicit operator System.Drawing.Color(Color color)
+        {
+            return System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B);
         }
     }
 
@@ -162,19 +250,25 @@ public static class NotSharpGame
             """
             #version 330 core
             layout (location = 0) in vec3 aVertex;
+            layout (location = 1) in vec4 aColor;
+            
+            out vec4 color;
             
             void main()
             {
                 gl_Position = vec4(aVertex, 1.0);
+                color = aColor;
             }  
             """,
             """
             #version 330 core
             out vec4 fragColor;
             
+            in vec4 color;
+            
             void main()
             {
-                fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+                fragColor = color;
             }
             """
         );
@@ -192,9 +286,17 @@ public static class NotSharpGame
             0, 1, 3,
             1, 2, 3
         };
+        _mesh.Colors = new Color[]
+        {
+            new Color(255, 0, 0, 255),
+            new Color(0, 255, 0, 255),
+            new Color(0, 0, 255, 255),
+            new Color(255, 255, 0, 255)
+        };
+        _mesh.FetchAttributesFromShader(_shader);
         _mesh.UpdateBuffers();
         
-        _gl.ClearColor(Color.CornflowerBlue);
+        _gl.ClearColor(System.Drawing.Color.CornflowerBlue);
     }
     
     private static void Update(double delta)
