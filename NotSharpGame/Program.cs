@@ -160,8 +160,11 @@ public static class NotSharpGame
 
         public void Dispose()
         {
-            _gl.DeleteBuffer(Vbo);
+            _gl.DeleteBuffer(Ebo);
             _gl.DeleteVertexArray(Vao);
+            
+            _gl.DeleteBuffer(Vbo);
+            _gl.DeleteBuffer(Cbo);
         }
     }
 
@@ -336,6 +339,7 @@ public static class NotSharpGame
      */ 
     private static void Destroy()
     {
+        _mesh.Dispose();
         _shader.Dispose();
         
         _gl.Dispose();
