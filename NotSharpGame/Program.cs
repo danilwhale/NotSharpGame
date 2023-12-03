@@ -1,4 +1,5 @@
 ﻿using System.Drawing;
+using System.Numerics;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
@@ -12,6 +13,96 @@ public static class NotSharpGame
     private static IWindow _window = null!;
     private static GL _gl = null!;
     private static IInputContext _input = null!;
+
+    public class Shader : IDisposable
+    {
+        public readonly uint Id;
+
+        public Shader(string vsCode, string fsCode)
+        {
+            uint vs = _gl.CreateShader(ShaderType.VertexShader);
+            _gl.ShaderSource(vs, vsCode);
+            _gl.CompileShader(vs);
+            if (_gl.GetShader(vs, ShaderParameterName.CompileStatus) == 0)
+            {
+                Console.WriteLine(_gl.GetShaderInfoLog(vs));
+                return;
+            }
+
+            uint fs = _gl.CreateShader(ShaderType.FragmentShader);
+            _gl.ShaderSource(fs, fsCode);
+            _gl.CompileShader(fs);
+            if (_gl.GetShader(fs, ShaderParameterName.CompileStatus) == 0)
+            {
+                Console.WriteLine(_gl.GetShaderInfoLog(fs));
+                return;
+            }
+
+            Id = _gl.CreateProgram();
+            _gl.AttachShader(Id, vs);
+            _gl.AttachShader(Id, fs);
+            _gl.LinkProgram(Id);
+            if (_gl.GetProgram(Id, ProgramPropertyARB.LinkStatus) == 0)
+            {
+                Console.WriteLine(_gl.GetProgramInfoLog(Id));
+                Id = 0;
+            }
+            
+            _gl.DeleteShader(vs);
+            _gl.DeleteShader(fs);
+        }
+
+        public void Dispose()
+        {
+            _gl.DeleteProgram(Id);
+        }
+    }
+
+    public class Mesh : IDisposable
+    {
+        public List<Vector3> Vertices = new List<Vector3>();
+
+        public readonly uint Vbo, Vao;
+
+        public Mesh()
+        {
+            Vbo = _gl.CreateBuffer();
+            Vao = _gl.CreateVertexArray();
+        }
+
+        public unsafe void UpdateBuffers()
+        {
+            _gl.BindVertexArray(Vao);
+            
+            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
+            _gl.BufferData<Vector3>(BufferTargetARB.ArrayBuffer, Vertices.ToArray(), BufferUsageARB.StaticDraw);
+            
+            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(0);
+
+            _gl.BindVertexArray(0);
+            
+            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
+        }
+
+        public void Draw(PrimitiveType type)
+        {
+            _gl.BindVertexArray(Vao);
+
+            _gl.DrawArrays(type, 0, (uint)Vertices.Count);
+            
+            _gl.BindVertexArray(0);
+        }
+
+        public void Dispose()
+        {
+            _gl.DeleteBuffer(Vbo);
+            _gl.DeleteVertexArray(Vao);
+        }
+    }
+
+    private static Shader _shader;
+    private static Mesh _mesh;
 
     private static void Main()
     {
@@ -45,6 +136,36 @@ public static class NotSharpGame
         {
             keyboard.KeyDown += KeyDown;
         }
+
+        _shader = new Shader(
+            """
+            #version 330 core
+            layout (location = 0) in vec3 aVertex;
+            
+            void main()
+            {
+                gl_Position = vec4(aVertex, 1.0);
+            }  
+            """,
+            """
+            #version 330 core
+            out vec4 fragColor;
+            
+            void main()
+            {
+                fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            }
+            """
+        );
+
+        _mesh = new Mesh();
+        _mesh.Vertices = new List<Vector3>
+        {
+            new Vector3(-0.5f, -0.5f, 0.0f),
+            new Vector3(0.5f, -0.5f, 0.0f),
+            new Vector3(0.0f, 0.5f, 0.0f)
+        };
+        _mesh.UpdateBuffers();
         
         _gl.ClearColor(Color.CornflowerBlue);
     }
@@ -57,6 +178,9 @@ public static class NotSharpGame
     private static void Render(double delta)
     {
         _gl.Clear(ClearBufferMask.ColorBufferBit);
+        
+        _gl.UseProgram(_shader.Id);
+        _mesh.Draw(PrimitiveType.Triangles);
     }
     
     // every other method goes here
@@ -83,6 +207,8 @@ public static class NotSharpGame
      */ 
     private static void Destroy()
     {
+        _shader.Dispose();
+        
         _gl.Dispose();
         _input.Dispose();
     }
