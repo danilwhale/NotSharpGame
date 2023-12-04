@@ -4,6 +4,7 @@ using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
+using StbImageSharp;
 
 public static class NotSharpGame
 {
@@ -62,21 +63,25 @@ public static class NotSharpGame
     {
         public const string VertexAttribute = "aVertex";
         public const string ColorAttribute = "aColor";
+        public const string TexcoordAttribute = "aTexcoord";
         
         public Vector3[] Vertices;
         public uint[] Indices;
         public Color[] Colors;
+        public Vector2[] Texcoords;
         
         public readonly uint Ebo, Vao;
         
         /*
          * Vbo - vertices buffer
          * Cbo - colors buffer
+         * Tbo - texcoords buffer
          */
-        public readonly uint Vbo, Cbo;
+        public readonly uint Vbo, Cbo, Tbo;
 
         private int _vertexAttrib = -1;
         private int _colorAttrib = -1;
+        private int _texcoordAttrib = -1;
 
         public Mesh()
         {
@@ -85,6 +90,7 @@ public static class NotSharpGame
             
             Vbo = _gl.CreateBuffer();
             Cbo = _gl.CreateBuffer();
+            Tbo = _gl.CreateBuffer();
         }
 
         public void FetchAttributesFromShader(Shader shader)
@@ -94,6 +100,9 @@ public static class NotSharpGame
             
             _colorAttrib = _gl.GetAttribLocation(shader.Id, ColorAttribute);
             ThrowIfInvalidAttrib(_colorAttrib, "color");
+
+            _texcoordAttrib = _gl.GetAttribLocation(shader.Id, TexcoordAttribute);
+            ThrowIfInvalidAttrib(_colorAttrib, "texcoord");
         }
 
         private void ThrowIfInvalidAttrib(int attrib, string name)
@@ -106,12 +115,12 @@ public static class NotSharpGame
 
         public unsafe void UpdateBuffers()
         {
-            if (Vertices == null || Indices == null)
+            if (Vertices == null || Indices == null || Texcoords == null)
             {
                 throw new NullReferenceException("one of your buffers is null you bozo");
             }
 
-            if (_vertexAttrib < 0 || _colorAttrib < 0)
+            if (_vertexAttrib < 0 || _colorAttrib < 0 || _texcoordAttrib < 0)
             {
                 throw new IndexOutOfRangeException("attributes arent fetched");
             }
@@ -129,6 +138,12 @@ public static class NotSharpGame
             
             _gl.VertexAttribPointer((uint)_colorAttrib, 4, VertexAttribPointerType.UnsignedByte, true, 4 * sizeof(byte), (void*)0);
             _gl.EnableVertexAttribArray((uint)_colorAttrib);
+            
+            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Tbo);
+            _gl.BufferData<Vector2>(BufferTargetARB.ArrayBuffer, Texcoords, BufferUsageARB.StaticDraw);
+            
+            _gl.VertexAttribPointer((uint)_texcoordAttrib, 2, VertexAttribPointerType.Float, false, 2 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray((uint)_texcoordAttrib);
             
             if (Vertices.Length != 0)
             {
@@ -165,6 +180,7 @@ public static class NotSharpGame
             
             _gl.DeleteBuffer(Vbo);
             _gl.DeleteBuffer(Cbo);
+            _gl.DeleteBuffer(Tbo);
         }
     }
 
@@ -213,8 +229,101 @@ public static class NotSharpGame
         }
     }
 
+    public class Texture : IDisposable
+    {
+        public readonly int Width;
+        public readonly int Height;
+        public readonly PixelFormat Format;
+        
+        public readonly uint Id;
+
+        public Texture(Image image)
+        {
+            Id = _gl.GenTexture();
+            
+            Bind();
+            
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.NearestMipmapNearest);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
+            _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
+
+            _gl.TexImage2D<byte>(TextureTarget.Texture2D, 0, (int)image.Format, image.Width, image.Height, 0, image.Format, PixelType.UnsignedByte, image.Data);
+            _gl.GenerateMipmap(TextureTarget.Texture2D);
+            
+            _gl.BindTexture(TextureTarget.Texture2D, 0);
+        }
+
+        public void Bind()
+        {
+            _gl.BindTexture(TextureTarget.Texture2D, Id);
+        }
+
+        public void Dispose()
+        {
+            _gl.DeleteTexture(Id);
+        }
+    }
+
+    public class Image
+    {
+        public byte[] Data;
+        public uint Width;
+        public uint Height;
+        public PixelFormat Format;
+
+        public Image(byte[] data, uint width, uint height, PixelFormat format)
+        {
+            Data = data;
+            Width = width;
+            Height = height;
+            Format = format;
+        }
+
+        public Image(string path)
+        {
+            ImageResult img = ImageResult.FromMemory(File.ReadAllBytes(path));
+            Data = img.Data;
+            Width = (uint)img.Width;
+            Height = (uint)img.Height;
+            Format = img.Comp switch
+            {
+                ColorComponents.RedGreenBlue => PixelFormat.Rgb,
+                ColorComponents.RedGreenBlueAlpha => PixelFormat.Rgba,
+                _ => throw new ArgumentException("unsupported color component")
+            };
+        }
+
+        public void SetPixel(int x, int y, Color color)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return;
+
+            int i = (int)(x + Width * y);
+            Data[i + 0] = color.R;
+            Data[i + 1] = color.G;
+            Data[i + 2] = color.B;
+            if (Format == PixelFormat.Rgba) Data[i + 3] = color.A;
+        }
+
+        public Color GetPixel(int x, int y)
+        {
+            Color color = new Color();
+            if (x < 0 || x >= Width || y < 0 || y >= Height) return color;
+            
+            int i = (int)(x + Width * y);
+            color.R = Data[i + 0];
+            color.G = Data[i + 1];
+            color.B = Data[i + 2];
+            color.A = Format == PixelFormat.Rgba ? Data[i + 3] : (byte)255;
+
+            return color;
+        }
+    }
+
     private static Shader _shader;
     private static Mesh _mesh;
+    private static Texture _texture;
 
     private static void Main()
     {
@@ -254,13 +363,17 @@ public static class NotSharpGame
             #version 330 core
             layout (location = 0) in vec3 aVertex;
             layout (location = 1) in vec4 aColor;
+            layout (location = 2) in vec2 aTexcoord;
             
             out vec4 color;
+            out vec2 texcoord;
             
             void main()
             {
                 gl_Position = vec4(aVertex, 1.0);
+                
                 color = aColor;
+                texcoord = aTexcoord;
             }  
             """,
             """
@@ -268,10 +381,13 @@ public static class NotSharpGame
             out vec4 fragColor;
             
             in vec4 color;
+            in vec2 texcoord;
+            
+            uniform sampler2D uTexture;
             
             void main()
             {
-                fragColor = color;
+                fragColor = texture(uTexture, texcoord) * color;
             }
             """
         );
@@ -291,13 +407,23 @@ public static class NotSharpGame
         };
         _mesh.Colors = new Color[]
         {
-            new Color(255, 0, 0),
-            new Color(0, 255, 0),
-            new Color(0, 0, 255),
-            new Color(255, 255, 0)
+            new Color(255, 255, 255),
+            new Color(255, 255, 255),
+            new Color(255, 255, 255),
+            new Color(255, 255, 255)
         };
+        _mesh.Texcoords = new Vector2[]
+        {
+            new Vector2(1, 1),
+            new Vector2(1, 0),
+            new Vector2(0, 0),
+            new Vector2(0, 1)
+        };
+        
         _mesh.FetchAttributesFromShader(_shader);
         _mesh.UpdateBuffers();
+
+        _texture = new Texture(new Image("Resources/Grass.png"));
         
         _gl.ClearColor(System.Drawing.Color.CornflowerBlue);
     }
@@ -311,6 +437,7 @@ public static class NotSharpGame
     {
         _gl.Clear(ClearBufferMask.ColorBufferBit);
         
+        _texture.Bind();
         _gl.UseProgram(_shader.Id);
         _mesh.Draw(PrimitiveType.Triangles);
     }
@@ -341,6 +468,7 @@ public static class NotSharpGame
     {
         _mesh.Dispose();
         _shader.Dispose();
+        _texture.Dispose();
         
         _gl.Dispose();
         _input.Dispose();
