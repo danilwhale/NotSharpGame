@@ -294,32 +294,9 @@ public static class NotSharpGame
                 _ => throw new ArgumentException("unsupported color component")
             };
         }
-
-        public void SetPixel(int x, int y, Color color)
-        {
-            if (x < 0 || x >= Width || y < 0 || y >= Height) return;
-
-            int i = (int)(x + Width * y);
-            Data[i + 0] = color.R;
-            Data[i + 1] = color.G;
-            Data[i + 2] = color.B;
-            if (Format == PixelFormat.Rgba) Data[i + 3] = color.A;
-        }
-
-        public Color GetPixel(int x, int y)
-        {
-            Color color = new Color();
-            if (x < 0 || x >= Width || y < 0 || y >= Height) return color;
-            
-            int i = (int)(x + Width * y);
-            color.R = Data[i + 0];
-            color.G = Data[i + 1];
-            color.B = Data[i + 2];
-            color.A = Format == PixelFormat.Rgba ? Data[i + 3] : (byte)255;
-
-            return color;
-        }
     }
+    
+    
 
     private static Shader _shader;
     private static Mesh _mesh;
