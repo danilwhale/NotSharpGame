@@ -53,6 +53,68 @@ public static class NotSharpGame
             _gl.DeleteShader(fs);
         }
 
+        public int GetAttribLoc(string name)
+        {
+            int loc = _gl.GetAttribLocation(Id, name);
+            if (loc < 0)
+            {
+                throw new ArgumentException("attribute with specified name cant be found", nameof(name));
+            }
+
+            return loc;
+        }
+
+        public int GetUniformLoc(string name)
+        {
+            int loc = _gl.GetUniformLocation(Id, name);
+            if (loc < 0)
+            {
+                throw new ArgumentException("uniform with specified name cant be found", nameof(name));
+            }
+
+            return loc;
+        }
+
+        public void Use()
+        {
+            _gl.UseProgram(Id);
+        }
+
+        public void SetUniform(string name, bool value)
+        {
+            _gl.Uniform1(GetUniformLoc(name), value ? 1 : 0);
+        }
+
+        public void SetUniform(string name, int value)
+        {
+            _gl.Uniform1(GetUniformLoc(name), value);
+        }
+
+        public void SetUniform(string name, float value)
+        {
+            _gl.Uniform1(GetUniformLoc(name), value);
+        }
+
+        public void SetUniform(string name, Vector2 v)
+        {
+            _gl.Uniform2(GetUniformLoc(name), v);
+        }
+
+        public void SetUniform(string name, Vector3 v)
+        {
+            _gl.Uniform3(GetUniformLoc(name), v);
+        }
+
+        public void SetUniform(string name, Vector4 v)
+        {
+            _gl.Uniform4(GetUniformLoc(name), v);
+        }
+
+        public unsafe void SetUniform(string name, Matrix4x4 m)
+        {
+            _gl.UniformMatrix4(GetUniformLoc(name), 1, false, (float*)&m);
+        }
+
         public void Dispose()
         {
             _gl.DeleteProgram(Id);
@@ -95,22 +157,9 @@ public static class NotSharpGame
 
         public void FetchAttributesFromShader(Shader shader)
         {
-            _vertexAttrib = _gl.GetAttribLocation(shader.Id, VertexAttribute);
-            ThrowIfInvalidAttrib(_vertexAttrib, "vertex");
-            
-            _colorAttrib = _gl.GetAttribLocation(shader.Id, ColorAttribute);
-            ThrowIfInvalidAttrib(_colorAttrib, "color");
-
-            _texcoordAttrib = _gl.GetAttribLocation(shader.Id, TexcoordAttribute);
-            ThrowIfInvalidAttrib(_colorAttrib, "texcoord");
-        }
-
-        private void ThrowIfInvalidAttrib(int attrib, string name)
-        {
-            if (attrib < 0)
-            {
-                throw new IndexOutOfRangeException("attribute " + name + " doesnt exist");
-            }
+            _vertexAttrib = shader.GetAttribLoc(VertexAttribute);
+            _colorAttrib = shader.GetAttribLoc(ColorAttribute);
+            _texcoordAttrib = shader.GetAttribLoc(TexcoordAttribute);
         }
 
         public unsafe void UpdateBuffers()
@@ -415,16 +464,15 @@ public static class NotSharpGame
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
         
         _texture.Bind();
+        _shader.Use();
         
-        _gl.UseProgram(_shader.Id);
-        
-        Matrix4x4 projection = _camera.GetProjection();
-        Matrix4x4 view = _camera.GetView();
         Matrix4x4 model = Matrix4x4.CreateFromAxisAngle(new Vector3(0.1f, 0.2f, 0.3f), (float)_window.Time);
+        Matrix4x4 view = _camera.GetView();
+        Matrix4x4 projection = _camera.GetProjection();
         
-        _gl.UniformMatrix4(_gl.GetUniformLocation(_shader.Id, "model"), 1, false, (float*)&model);
-        _gl.UniformMatrix4(_gl.GetUniformLocation(_shader.Id, "view"), 1, false, (float*)&view);
-        _gl.UniformMatrix4(_gl.GetUniformLocation(_shader.Id, "projection"), 1, false, (float*)&projection);
+        _shader.SetUniform("model", model);
+        _shader.SetUniform("view", view);
+        _shader.SetUniform("projection", projection);
         
         _mesh.Draw(PrimitiveType.Triangles);
     }
