@@ -295,12 +295,41 @@ public static class NotSharpGame
             };
         }
     }
-    
-    
+
+    public class Camera
+    {
+        public Vector3 Position;
+        public Vector3 Target;
+        public Vector3 Up;
+        public float Near;
+        public float Far;
+        public float Fov;
+
+        public Camera(Vector3 position, Vector3 target, Vector3 up, float near, float far, float fov)
+        {
+            Position = position;
+            Target = target;
+            Up = up;
+            Near = near;
+            Far = far;
+            Fov = fov;
+        }
+
+        public Matrix4x4 GetProjection()
+        {
+            return Matrix4x4.CreatePerspectiveFieldOfView(Fov * (MathF.PI / 180), (float)_window.Size.X / _window.Size.Y, Near, Far);
+        }
+
+        public Matrix4x4 GetView()
+        {
+            return Matrix4x4.CreateLookAt(Position, Target, Up);
+        }
+    }
 
     private static Shader _shader;
     private static Mesh _mesh;
     private static Texture _texture;
+    private static Camera _camera;
 
     private static void Main()
     {
@@ -369,7 +398,10 @@ public static class NotSharpGame
         _mesh.UpdateBuffers();
 
         _texture = new Texture(new Image("Resources/Grass.png"));
+
+        _camera = new Camera(new Vector3(1, 1, 1), new Vector3(0, 0, 0), Vector3.UnitY, 0.01f, 1000.0f, 70.0f);
         
+        _gl.Enable(EnableCap.DepthTest);
         _gl.ClearColor(System.Drawing.Color.CornflowerBlue);
     }
     
@@ -378,12 +410,22 @@ public static class NotSharpGame
         _window.Title = string.Format(TitleFormat, Math.Round(1 / delta));
     }
 
-    private static void Render(double delta)
+    private static unsafe void Render(double delta)
     {
-        _gl.Clear(ClearBufferMask.ColorBufferBit);
+        _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
         
         _texture.Bind();
+        
         _gl.UseProgram(_shader.Id);
+        
+        Matrix4x4 projection = _camera.GetProjection();
+        Matrix4x4 view = _camera.GetView();
+        Matrix4x4 model = Matrix4x4.CreateFromAxisAngle(new Vector3(0.1f, 0.2f, 0.3f), (float)_window.Time);
+        
+        _gl.UniformMatrix4(_gl.GetUniformLocation(_shader.Id, "model"), 1, false, (float*)&model);
+        _gl.UniformMatrix4(_gl.GetUniformLocation(_shader.Id, "view"), 1, false, (float*)&view);
+        _gl.UniformMatrix4(_gl.GetUniformLocation(_shader.Id, "projection"), 1, false, (float*)&projection);
+        
         _mesh.Draw(PrimitiveType.Triangles);
     }
     
