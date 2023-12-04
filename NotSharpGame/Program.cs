@@ -15,6 +15,8 @@ public static class NotSharpGame
     private static GL _gl = null!;
     private static IInputContext _input = null!;
 
+    private static float _delta = 0;
+
     public class Shader : IDisposable
     {
         public readonly uint Id;
@@ -372,20 +374,42 @@ public static class NotSharpGame
     public class Camera
     {
         public Vector3 Position;
-        public Vector3 Target;
+        public Vector2 Rotation; // we can use 2d vector for rotation, because we dont use roll value
+
+        public Vector3 Forward = new Vector3(0, 0, -1);
         public Vector3 Up;
-        public float Near;
-        public float Far;
+        public Vector3 WorldUp;
+        public Vector3 Right;
+        
+        public float Near = 0.1f;
+        public float Far = 1000.0f;
         public float Fov;
 
-        public Camera(Vector3 position, Vector3 target, Vector3 up, float near, float far, float fov)
+        public Camera(Vector3 position, Vector3 up, float fov)
         {
             Position = position;
-            Target = target;
-            Up = up;
-            Near = near;
-            Far = far;
+            WorldUp = up;
             Fov = fov;
+            Rotation = new Vector2(0.0f, -90.0f);
+            UpdateVectors();
+        }
+
+        public void UpdateVectors()
+        {
+            // convert rotation to radians initally, so we wont convert same values multiple times
+            float yaw = MathHelper.ToRadians(Rotation.Y);
+            float pitch = MathHelper.ToRadians(Rotation.X);
+            // float roll = MathHelper.ToRadians(Rotation.Z);
+            
+            Vector3 forward = new Vector3(
+                MathF.Cos(yaw) * MathF.Cos(pitch),
+                MathF.Sin(pitch),
+                MathF.Sin(yaw) * MathF.Cos(pitch)
+            );
+            Forward = Vector3.Normalize(forward);
+
+            Right = Vector3.Normalize(Vector3.Cross(Forward, WorldUp));
+            Up = Vector3.Normalize(Vector3.Cross(Right, Forward));
         }
 
         public Matrix4x4 GetProjection()
@@ -395,7 +419,135 @@ public static class NotSharpGame
 
         public Matrix4x4 GetView()
         {
-            return Matrix4x4.CreateLookAt(Position, Target, Up);
+            return Matrix4x4.CreateLookAt(Position, Position + Forward, Up);
+        }
+    }
+
+    public class CameraController
+    {
+        public Camera Camera;
+        public float MouseSensitivity;
+        public float Speed;
+
+        private bool _firstFrame = true;
+        private Vector2 _lastPosition;
+
+        public CameraController(Camera camera, float mouseSensitivity, float speed)
+        {
+            Camera = camera;
+            MouseSensitivity = mouseSensitivity;
+            Speed = speed;
+
+            foreach (var mouse in _input.Mice)
+            {
+                mouse.MouseMove += HandleMouse;
+                mouse.Cursor.CursorMode = CursorMode.Disabled;
+            }
+        }
+
+        private void HandleMouse(IMouse mouse, Vector2 position)
+        {
+            // so camera rotation wont bug
+            if (_firstFrame)
+            {
+                _lastPosition = position;
+                _firstFrame = false;
+            }
+
+            Vector2 mouseDelta = position - _lastPosition;
+            _lastPosition = position;
+
+            Camera.Rotation += new Vector2(-mouseDelta.Y, mouseDelta.X) * MouseSensitivity;
+            
+            // clamp up/down rotation to 90 degrees
+            if (Camera.Rotation.X < -89) Camera.Rotation.X = -89;
+            else if (Camera.Rotation.X > 89) Camera.Rotation.X = 89;
+            
+            _camera.UpdateVectors();
+        }
+
+        public void Update()
+        {
+            float velocity = Speed * _delta;
+            
+            if (Input.IsKeyDown(Key.W))
+            {
+                Camera.Position += Camera.Forward * velocity;
+            }
+
+            if (Input.IsKeyDown(Key.S))
+            {
+                Camera.Position -= Camera.Forward * velocity;
+            }
+
+            if (Input.IsKeyDown(Key.A))
+            {
+                Camera.Position -= Camera.Right * velocity;
+            }
+
+            if (Input.IsKeyDown(Key.D))
+            {
+                Camera.Position += Camera.Right * velocity;
+            }
+
+            if (Input.IsKeyDown(Key.E))
+            {
+                Camera.Position += Camera.Up * velocity;
+            }
+            
+            if (Input.IsKeyDown(Key.Q))
+            {
+                Camera.Position -= Camera.Up * velocity;
+            }
+        }
+    }
+    
+    // shrimple input manager
+    public static class Input
+    {
+        private static Dictionary<Key, bool> _keymap = new Dictionary<Key, bool>();
+        
+        public static void Initialize()
+        {
+            foreach (var keyboard in _input.Keyboards)
+            {
+                keyboard.KeyDown += OnKeyDown;
+                keyboard.KeyUp += OnKeyUp;
+            }
+        }
+
+        private static void OnKeyUp(IKeyboard keyboard, Key key, int scancode)
+        {
+            _keymap[key] = false;
+        }
+
+        private static void OnKeyDown(IKeyboard keyboard, Key key, int scancode)
+        {
+            _keymap[key] = true;
+        }
+
+        public static bool IsKeyDown(Key key)
+        {
+            return _keymap.TryGetValue(key, out bool down) && down;
+        }
+
+        public static bool IsKeyUp(Key key)
+        {
+            return !IsKeyDown(key);
+        }
+    }
+
+    // some useful gaying (gaming for straight people) mathematical methods
+    public static class MathHelper
+    {
+        public static float ToRadians(float deg)
+        {
+            return deg * (MathF.PI / 180);
+        }
+
+        public static float ToDegrees(float rad)
+        {
+            return rad * (180 / MathF.PI);
         }
     }
 
@@ -403,6 +555,7 @@ public static class NotSharpGame
     private static Mesh _mesh;
     private static Texture _texture;
     private static Camera _camera;
+    private static CameraController _controller;
 
     private static void Main()
     {
@@ -472,7 +625,10 @@ public static class NotSharpGame
 
         _texture = new Texture(new Image("Resources/Grass.png"));
 
-        _camera = new Camera(new Vector3(1, 1, 1), new Vector3(0, 0, 0), Vector3.UnitY, 0.01f, 1000.0f, 70.0f);
+        _camera = new Camera(new Vector3(0, 0, 1), Vector3.UnitY, 70.0f);
+        _controller = new CameraController(_camera, 0.2f, 2.5f);
+        
+        Input.Initialize();
         
         _gl.Enable(EnableCap.DepthTest);
         _gl.ClearColor(System.Drawing.Color.CornflowerBlue);
@@ -480,7 +636,10 @@ public static class NotSharpGame
     
     private static void Update(double delta)
     {
+        _delta = (float)delta;
+        
         _window.Title = string.Format(TitleFormat, Math.Round(1 / delta));
+        _controller.Update();
     }
 
     private static unsafe void Render(double delta)
