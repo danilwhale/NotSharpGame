@@ -127,19 +127,17 @@ public static class NotSharpGame
         public const string ColorAttribute = "aColor";
         public const string TexcoordAttribute = "aTexcoord";
         
-        public Vector3[] Vertices;
-        public uint[] Indices;
-        public Color[] Colors;
-        public Vector2[] Texcoords;
+        public Vector3[] Vertices = Array.Empty<Vector3>();
+        public uint[] Indices = Array.Empty<uint>();
+        public Color[] Colors = Array.Empty<Color>();
+        public Vector2[] Texcoords = Array.Empty<Vector2>();
         
-        public readonly uint Ebo, Vao;
+        public readonly uint Vao;
         
-        /*
-         * Vbo - vertices buffer
-         * Cbo - colors buffer
-         * Tbo - texcoords buffer
-         */
-        public readonly uint Vbo, Cbo, Tbo;
+        public readonly Buffer<uint> IndicesBuffer = new Buffer<uint>(BufferTargetARB.ElementArrayBuffer, BufferUsageARB.StaticDraw);
+        public readonly Buffer<Vector3> VerticesBuffer = new Buffer<Vector3>(BufferTargetARB.ArrayBuffer, BufferUsageARB.StaticDraw);
+        public readonly Buffer<Color> ColorsBuffer = new Buffer<Color>(BufferTargetARB.ArrayBuffer, BufferUsageARB.StaticDraw);
+        public readonly Buffer<Vector2> TexcoordsBuffer = new Buffer<Vector2>(BufferTargetARB.ArrayBuffer, BufferUsageARB.StreamDraw);
 
         private int _vertexAttrib = -1;
         private int _colorAttrib = -1;
@@ -147,12 +145,7 @@ public static class NotSharpGame
 
         public Mesh()
         {
-            Ebo = _gl.CreateBuffer();
             Vao = _gl.CreateVertexArray();
-            
-            Vbo = _gl.CreateBuffer();
-            Cbo = _gl.CreateBuffer();
-            Tbo = _gl.CreateBuffer();
         }
 
         public void FetchAttributesFromShader(Shader shader)
@@ -164,7 +157,8 @@ public static class NotSharpGame
 
         public unsafe void UpdateBuffers()
         {
-            if (Vertices == null || Indices == null || Texcoords == null)
+            // we can ignore indices length, they are optional
+            if (Vertices.Length < 1 || Colors.Length < 1 || Texcoords.Length < 1)
             {
                 throw new NullReferenceException("one of your buffers is null you bozo");
             }
@@ -175,31 +169,25 @@ public static class NotSharpGame
             }
             
             _gl.BindVertexArray(Vao);
-            
-            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
-            _gl.BufferData<Vector3>(BufferTargetARB.ArrayBuffer, Vertices, BufferUsageARB.StaticDraw);
 
-            _gl.VertexAttribPointer((uint)_vertexAttrib, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray((uint)_vertexAttrib);
-            
-            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Cbo);
-            _gl.BufferData<Color>(BufferTargetARB.ArrayBuffer, Colors, BufferUsageARB.StaticDraw);
-            
-            _gl.VertexAttribPointer((uint)_colorAttrib, 4, VertexAttribPointerType.UnsignedByte, true, 4 * sizeof(byte), (void*)0);
-            _gl.EnableVertexAttribArray((uint)_colorAttrib);
-            
-            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, Tbo);
-            _gl.BufferData<Vector2>(BufferTargetARB.ArrayBuffer, Texcoords, BufferUsageARB.StaticDraw);
-            
-            _gl.VertexAttribPointer((uint)_texcoordAttrib, 2, VertexAttribPointerType.Float, false, 2 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray((uint)_texcoordAttrib);
-            
-            if (Vertices.Length != 0)
+            if (Indices.Length != 0)
             {
-                _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, Ebo);
-                _gl.BufferData<uint>(BufferTargetARB.ElementArrayBuffer, Indices, BufferUsageARB.StaticDraw);
+                IndicesBuffer.Bind();
+                IndicesBuffer.Upload(Indices);
             }
-
+            
+            VerticesBuffer.Bind();
+            VerticesBuffer.Upload(Vertices);
+            VerticesBuffer.BindAttrib(_vertexAttrib, 3, VertexAttribPointerType.Float, false);
+            
+            ColorsBuffer.Bind();
+            ColorsBuffer.Upload(Colors);
+            ColorsBuffer.BindAttrib(_colorAttrib, 4, VertexAttribPointerType.UnsignedByte, true);
+            
+            TexcoordsBuffer.Bind();
+            TexcoordsBuffer.Upload(Texcoords);
+            TexcoordsBuffer.BindAttrib(_texcoordAttrib, 2, VertexAttribPointerType.Float, false);
+            
             _gl.BindVertexArray(0);
             
             _gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
@@ -224,12 +212,48 @@ public static class NotSharpGame
 
         public void Dispose()
         {
-            _gl.DeleteBuffer(Ebo);
             _gl.DeleteVertexArray(Vao);
             
-            _gl.DeleteBuffer(Vbo);
-            _gl.DeleteBuffer(Cbo);
-            _gl.DeleteBuffer(Tbo);
+            IndicesBuffer.Dispose();
+            VerticesBuffer.Dispose();
+            ColorsBuffer.Dispose();
+            TexcoordsBuffer.Dispose();
+        }
+    }
+
+    public class Buffer<T> : IDisposable
+        where T : unmanaged
+    {
+        public readonly uint Id;
+        public readonly BufferTargetARB Target;
+        public readonly BufferUsageARB Usage;
+
+        public Buffer(BufferTargetARB target, BufferUsageARB usage)
+        {
+            Id = _gl.CreateBuffer();
+            Target = target;
+            Usage = usage;
+        }
+
+        public void Bind()
+        {
+            _gl.BindBuffer(Target, Id);
+        }
+
+        public void Upload(ReadOnlySpan<T> data)
+        {
+            _gl.BufferData(Target, data, Usage);
+        }
+
+        public unsafe void BindAttrib(int index, int size, VertexAttribPointerType type, bool normalized, uint stride = 1, nint offset = 0)
+        {
+            _gl.VertexAttribPointer((uint)index, size, type, normalized, stride * (uint)sizeof(T), (void*)(offset * sizeof(T)));
+            _gl.EnableVertexAttribArray((uint)index);
+        }
+
+        public void Dispose()
+        {
+            _gl.DeleteBuffer(Id);
         }
     }
 
