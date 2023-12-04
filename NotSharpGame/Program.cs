@@ -358,39 +358,7 @@ public static class NotSharpGame
             keyboard.KeyDown += KeyDown;
         }
 
-        _shader = new Shader(
-            """
-            #version 330 core
-            layout (location = 0) in vec3 aVertex;
-            layout (location = 1) in vec4 aColor;
-            layout (location = 2) in vec2 aTexcoord;
-            
-            out vec4 color;
-            out vec2 texcoord;
-            
-            void main()
-            {
-                gl_Position = vec4(aVertex, 1.0);
-                
-                color = aColor;
-                texcoord = aTexcoord;
-            }  
-            """,
-            """
-            #version 330 core
-            out vec4 fragColor;
-            
-            in vec4 color;
-            in vec2 texcoord;
-            
-            uniform sampler2D uTexture;
-            
-            void main()
-            {
-                fragColor = texture(uTexture, texcoord) * color;
-            }
-            """
-        );
+        _shader = new Shader(File.ReadAllText("Resources/Shader.vert"), File.ReadAllText("Resources/Shader.frag"));
 
         _mesh = new Mesh();
         _mesh.Vertices = new Vector3[]
